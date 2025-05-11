@@ -30,6 +30,7 @@ export class StoryState {
   // v9:  multi-flows
   public readonly kInkSaveStateVersion = 10;
   public readonly kMinCompatibleLoadVersion = 8;
+  public collapseWhitespace = false;
 
   public onDidLoadState: (() => void) | null = null;
 
@@ -303,36 +304,33 @@ export class StoryState {
   private _currentText: string | null = null;
 
   public CleanOutputWhitespace(str: string) {
-    let sb = new StringBuilder();
-
-    let currentWhitespaceStart = -1;
-    let startOfLine = 0;
-
-    for (let i = 0; i < str.length; i++) {
-      let c = str.charAt(i);
-
-      let isInlineWhitespace = c == " " || c == "\t";
-
-      if (isInlineWhitespace && currentWhitespaceStart == -1)
-        currentWhitespaceStart = i;
-
-      if (!isInlineWhitespace) {
-        if (
-          c != "\n" &&
-          currentWhitespaceStart > 0 &&
-          currentWhitespaceStart != startOfLine
-        ) {
-          sb.Append(" ");
+    // IMPORTANT ENGINE CHANGE! DO NOT COLLAPSE WHITESPACE BY DEFAULT!
+    if (this.collapseWhitespace) {
+      let sb = new StringBuilder();
+      let currentWhitespaceStart = -1;
+      let startOfLine = 0;
+      for (let i = 0; i < str.length; i++) {
+        let c = str.charAt(i);
+        let isInlineWhitespace = c == " " || c == "\t";
+        if (isInlineWhitespace && currentWhitespaceStart == -1)
+          currentWhitespaceStart = i;
+        if (!isInlineWhitespace) {
+          if (
+            c != "\n" &&
+            currentWhitespaceStart > 0 &&
+            currentWhitespaceStart != startOfLine
+          ) {
+            sb.Append(" ");
+          }
+          currentWhitespaceStart = -1;
         }
-        currentWhitespaceStart = -1;
+        if (c == "\n") startOfLine = i + 1;
+        if (!isInlineWhitespace) sb.Append(c);
       }
-
-      if (c == "\n") startOfLine = i + 1;
-
-      if (!isInlineWhitespace) sb.Append(c);
+      return sb.toString();
+    } else {
+      return str;
     }
-
-    return sb.toString();
   }
 
   get currentTags() {
@@ -448,6 +446,8 @@ export class StoryState {
   }
 
   public GoToStart() {
+    this.callStack.currentElement.previousPointer =
+      this.callStack.currentElement.currentPointer.copy();
     this.callStack.currentElement.currentPointer = Pointer.StartOf(
       this.story.mainContentContainer
     );
@@ -1142,6 +1142,8 @@ export class StoryState {
       PushPopType.FunctionEvaluationFromGame,
       this.evaluationStack.length
     );
+    this.callStack.currentElement.previousPointer =
+      this.callStack.currentElement.currentPointer.copy();
     this.callStack.currentElement.currentPointer =
       Pointer.StartOf(funcContainer);
 

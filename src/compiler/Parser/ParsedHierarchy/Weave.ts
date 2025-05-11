@@ -72,7 +72,7 @@ export class Weave extends ParsedObject {
       return null;
     }
 
-    // Don't count extraneous newlines or VAR/CONST declarations,
+    // Don't count extraneous newlines or var/const declarations,
     // since they're "empty" statements outside of the main flow.
     let lastObject: ParsedObject | null = null;
     for (let ii = this.content.length - 1; ii >= 0; --ii) {
@@ -816,10 +816,12 @@ export class Weave extends ParsedObject {
         const otherContentWithName =
           flow.ContentWithNameAtLevel(weavePointName);
         if (otherContentWithName && otherContentWithName !== weavePoint) {
-          const errorMsg = `${weavePoint.GetType()} '${weavePointName}' has the same label name as a ${otherContentWithName.GetType()} (on ${
+          const errorMsg = `Duplicate identifier '${weavePointName}'. A ${otherContentWithName
+            .GetType()
+            .toLowerCase()} named '${weavePointName}' already exists on ${
             otherContentWithName.debugMetadata
-          })`;
-          this.Error(errorMsg, weavePoint);
+          }`;
+          this.Error(errorMsg, weavePoint?.identifier || weavePoint);
         }
       }
     }

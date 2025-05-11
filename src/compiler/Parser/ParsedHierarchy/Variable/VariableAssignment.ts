@@ -11,6 +11,7 @@ import { VariableAssignment as RuntimeVariableAssignment } from "../../../../eng
 import { VariableReference } from "./VariableReference";
 import { Identifier } from "../Identifier";
 import { asOrNull } from "../../../../engine/TypeAssertion";
+import { StructDefinition } from "../Struct/StructDefinition";
 
 export class VariableAssignment extends ParsedObject {
   private _runtimeAssignment: RuntimeVariableAssignment | null = null;
@@ -21,17 +22,19 @@ export class VariableAssignment extends ParsedObject {
   public readonly variableIdentifier: Identifier;
   public readonly expression: Expression | null = null;
   public readonly listDefinition: ListDefinition | null = null;
+  public readonly structDefinition: StructDefinition | null = null;
   public readonly isGlobalDeclaration: boolean;
   public readonly isNewTemporaryDeclaration: boolean;
 
-  get typeName() {
-    if (this.isNewTemporaryDeclaration) {
+  override get typeName() {
+    if (this.listDefinition !== null) {
+      return "list";
+    } else if (this.structDefinition !== null) {
+      return "define";
+    } else if (this.isNewTemporaryDeclaration) {
       return "temp";
     } else if (this.isGlobalDeclaration) {
-      if (this.listDefinition !== null) {
-        return "LIST";
-      }
-      return "VAR";
+      return "var";
     }
 
     return "variable assignment";
@@ -46,12 +49,14 @@ export class VariableAssignment extends ParsedObject {
     isGlobalDeclaration,
     isTemporaryNewDeclaration,
     listDef,
+    structDef,
     variableIdentifier,
   }: {
     readonly assignedExpression?: Expression;
     readonly isGlobalDeclaration?: boolean;
     readonly isTemporaryNewDeclaration?: boolean;
     readonly listDef?: ListDefinition;
+    readonly structDef?: StructDefinition;
     readonly variableIdentifier: Identifier;
   }) {
     super();
@@ -64,8 +69,12 @@ export class VariableAssignment extends ParsedObject {
     if (listDef instanceof ListDefinition) {
       this.listDefinition = this.AddContent(listDef) as ListDefinition;
       this.listDefinition.variableAssignment = this;
-
       // List definitions are always global
+      this.isGlobalDeclaration = true;
+    } else if (structDef instanceof StructDefinition) {
+      this.structDefinition = this.AddContent(structDef) as StructDefinition;
+      this.structDefinition.variableAssignment = this;
+      // Struct definitions are always global
       this.isGlobalDeclaration = true;
     } else if (assignedExpression) {
       this.expression = this.AddContent(assignedExpression) as Expression;
@@ -113,8 +122,12 @@ export class VariableAssignment extends ParsedObject {
   public ResolveReferences(context: Story): void {
     super.ResolveReferences(context);
 
-    // List definitions are checked for conflicts separately
-    if (this.isDeclaration && this.listDefinition === null) {
+    // List and struct definitions are checked for conflicts separately
+    if (
+      this.isDeclaration &&
+      this.listDefinition === null &&
+      this.structDefinition === null
+    ) {
       context.CheckForNamingCollisions(
         this,
         this.variableIdentifier,
@@ -122,7 +135,7 @@ export class VariableAssignment extends ParsedObject {
       );
     }
 
-    // Initial VAR x = [intialValue] declaration, not re-assignment
+    // Initial var x = [intialValue] declaration, not re-assignment
     if (this.isGlobalDeclaration) {
       const variableReference = asOrNull(this.expression, VariableReference);
       if (
@@ -131,7 +144,7 @@ export class VariableAssignment extends ParsedObject {
         !variableReference.isListItemReference
       ) {
         this.Error(
-          "global variable assignments cannot refer to other variables, only literal values, constants and list items"
+          "A var must be initialized to a number, string, boolean, constant, list item, or divert target."
         );
       }
     }
@@ -145,14 +158,11 @@ export class VariableAssignment extends ParsedObject {
       if (!resolvedVarAssignment.found) {
         if (this.variableName in this.story.constants) {
           this.Error(
-            `Can't re-assign to a constant (do you need to use VAR when declaring '${this.variableName}'?)`,
+            `Cannot re-assign a const (do you need to use var when declaring '${this.variableName}'?)`,
             this
           );
         } else {
-          this.Error(
-            `Variable could not be found to assign to: '${this.variableName}'`,
-            this
-          );
+          this.Error(`Cannot find variable named '${this.variableName}'`, this);
         }
       }
 
@@ -167,9 +177,9 @@ export class VariableAssignment extends ParsedObject {
   public readonly toString = (): string =>
     `${
       this.isGlobalDeclaration
-        ? "VAR"
+        ? "var"
         : this.isNewTemporaryDeclaration
-          ? "~ temp"
-          : ""
+        ? "~ temp"
+        : ""
     } ${this.variableName}`;
 }

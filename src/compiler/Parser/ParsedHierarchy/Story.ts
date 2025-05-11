@@ -11,17 +11,22 @@ import { FlowLevel } from "./Flow/FlowLevel";
 import { IncludedFile } from "./IncludedFile";
 import { ListDefinition } from "./List/ListDefinition";
 import { ListElementDefinition } from "./List/ListElementDefinition";
+import { StructDefinition } from "./Struct/StructDefinition";
 import { ParsedObject } from "./Object";
 import { Story as RuntimeStory } from "../../../engine/Story";
 import { SymbolType } from "./SymbolType";
 import { Text } from "./Text";
 import { VariableAssignment as RuntimeVariableAssignment } from "../../../engine/VariableAssignment";
+import { ListDefinition as RuntimeListDefinition } from "../../../engine/ListDefinition";
+import { StructDefinition as RuntimeStructDefinition } from "../../../engine/StructDefinition";
 import { Identifier } from "./Identifier";
 import { asOrNull } from "../../../engine/TypeAssertion";
 import { ClosestFlowBase } from "./Flow/ClosestFlowBase";
 import { FunctionCall } from "./FunctionCall";
 import { Path } from "./Path";
 import { VariableAssignment } from "./Variable/VariableAssignment";
+import { DebugMetadata } from "../../../engine/DebugMetadata";
+import { Stitch } from "./Stitch";
 
 export class Story extends FlowBase {
   public static readonly IsReservedKeyword = (name?: string): boolean => {
@@ -31,11 +36,22 @@ export class Story extends FlowBase {
       case "not":
       case "return":
       case "else":
-      case "VAR":
-      case "CONST":
       case "temp":
+      case "INCLUDE":
+      case "include":
+      case "EXTERNAL":
+      case "external":
+      case "VAR":
+      case "var":
+      case "CONST":
+      case "const":
       case "LIST":
+      case "list":
+      case "DEFINE":
+      case "define":
       case "function":
+      case "system":
+      case "none":
         return true;
     }
 
@@ -47,6 +63,7 @@ export class Story extends FlowBase {
   private _hadWarning: boolean = false;
   private _dontFlattenContainers: Set<RuntimeContainer> = new Set();
   private _listDefs: Map<string, ListDefinition> = new Map();
+  private _structDefs: Map<string, StructDefinition> = new Map();
 
   get flowLevel(): FlowLevel {
     return FlowLevel.Story;
@@ -79,7 +96,7 @@ export class Story extends FlowBase {
     super(null, toplevelObjects, null, false, isInclude);
   }
 
-  get typeName(): string {
+  override get typeName(): string {
     return "Story";
   }
 
@@ -94,10 +111,12 @@ export class Story extends FlowBase {
   // knots/stiches and any other content. Insert the normal content wherever
   // the include statement was, and append the knots/stitches to the very
   // end of the main story.
-  public PreProcessTopLevelObjects(topLevelContent: ParsedObject[]): void {
+  public override PreProcessTopLevelObjects(
+    topLevelContent: ParsedObject[]
+  ): void {
     super.PreProcessTopLevelObjects(topLevelContent);
 
-    const flowsFromOtherFiles = [];
+    const flowsFromOtherFiles: ParsedObject[] = [];
 
     // Inject included files
     for (let obj of topLevelContent) {
@@ -162,7 +181,7 @@ export class Story extends FlowBase {
 
       if (existingDefinition) {
         if (!existingDefinition.Equals(constDecl.expression)) {
-          const errorMsg = `CONST '${constDecl.constantName}' has been redefined with a different value. Multiple definitions of the same CONST are valid so long as they contain the same value. Initial definition was on ${existingDefinition.debugMetadata}.`;
+          const errorMsg = `Cannot redeclare const '${constDecl.constantName}' with a different value. (It is already declared on ${existingDefinition.debugMetadata})`;
           this.Error(errorMsg, constDecl, false);
         }
       }
@@ -179,6 +198,15 @@ export class Story extends FlowBase {
       }
     }
 
+    // Struct definitions are treated like constants too - they should be usable
+    // from other variable declarations.
+    this._structDefs = new Map();
+    for (const structDef of this.FindAll(StructDefinition)()) {
+      if (structDef.scopedIdentifier?.name) {
+        this._structDefs.set(structDef.scopedIdentifier?.name, structDef);
+      }
+    }
+
     this.externals = new Map();
 
     // Resolution of weave point names has to come first, before any runtime code generation
@@ -192,39 +220,46 @@ export class Story extends FlowBase {
 
     // Export initialisation of global variables
     // TODO: We *could* add this as a declarative block to the story itself...
-    const variableInitialisation = new RuntimeContainer();
-    variableInitialisation.AddContent(RuntimeControlCommand.EvalStart());
+    const variableInitialization = new RuntimeContainer();
+    variableInitialization.AddContent(RuntimeControlCommand.EvalStart());
 
     // Global variables are those that are local to the story and marked as global
-    const runtimeLists = [];
+    const runtimeLists: RuntimeListDefinition[] = [];
+    const runtimeStructs: RuntimeStructDefinition[] = [];
     for (const [key, value] of this.variableDeclarations) {
       if (value.isGlobalDeclaration) {
         if (value.listDefinition) {
           this._listDefs.set(key, value.listDefinition);
-          variableInitialisation.AddContent(
+          runtimeLists.push(value.listDefinition.runtimeListDefinition);
+          variableInitialization.AddContent(
             value.listDefinition.runtimeObject!
           );
-
-          runtimeLists.push(value.listDefinition.runtimeListDefinition);
+        } else if (value.structDefinition) {
+          this._structDefs.set(key, value.structDefinition);
+          runtimeStructs.push(value.structDefinition.runtimeStructDefinition);
         } else {
           if (!value.expression) {
             throw new Error();
           }
-          value.expression.GenerateIntoContainer(variableInitialisation);
+          value.expression.GenerateIntoContainer(variableInitialization);
         }
 
-        const runtimeVarAss = new RuntimeVariableAssignment(key, true);
-        runtimeVarAss.isGlobal = true;
-        variableInitialisation.AddContent(runtimeVarAss);
+        // Don't initialize structs at runtime
+        // They should only be initialized at compiletime and never serialized in save state
+        if (!value.structDefinition) {
+          const runtimeVarAss = new RuntimeVariableAssignment(key, true);
+          runtimeVarAss.isGlobal = true;
+          variableInitialization.AddContent(runtimeVarAss);
+        }
       }
     }
 
-    variableInitialisation.AddContent(RuntimeControlCommand.EvalEnd());
-    variableInitialisation.AddContent(RuntimeControlCommand.End());
+    variableInitialization.AddContent(RuntimeControlCommand.EvalEnd());
+    variableInitialization.AddContent(RuntimeControlCommand.End());
 
     if (this.variableDeclarations.size > 0) {
-      variableInitialisation.name = "global decl";
-      rootContainer.AddToNamedContentOnly(variableInitialisation);
+      variableInitialization.name = "global decl";
+      rootContainer.AddToNamedContentOnly(variableInitialization);
     }
 
     // Signal that it's safe to exit without error, even if there are no choices generated
@@ -232,13 +267,13 @@ export class Story extends FlowBase {
     rootContainer.AddContent(RuntimeControlCommand.Done());
 
     // Replace runtimeObject with Story object instead of the Runtime.Container generated by Parsed.ContainerBase
-    const runtimeStory = new RuntimeStory(rootContainer, runtimeLists);
+    const runtimeStory = new RuntimeStory(
+      rootContainer,
+      runtimeLists,
+      runtimeStructs
+    );
 
     this.runtimeObject = runtimeStory;
-
-    if (this.hadError) {
-      return null;
-    }
 
     // Optimisation step - inline containers that can be
     this.FlattenContainersIn(rootContainer);
@@ -252,10 +287,6 @@ export class Story extends FlowBase {
     // translating into an INKPath. (This also allows us to choose whether
     // we want the paths to be absolute)
     this.ResolveReferences(this);
-
-    if (this.hadError) {
-      return null;
-    }
 
     runtimeStory.ResetState();
 
@@ -374,42 +405,52 @@ export class Story extends FlowBase {
     }
   };
 
-  public readonly Error = (
+  public override readonly Error = (
     message: string,
-    source: ParsedObject | null | undefined,
+    source: ParsedObject | DebugMetadata | null | undefined,
     isWarning: boolean | null | undefined
   ) => {
     let errorType: ErrorType = isWarning ? ErrorType.Warning : ErrorType.Error;
 
-    let sb = "";
-    if (source instanceof AuthorWarning) {
-      sb += "TODO: ";
-      errorType = ErrorType.Author;
-    } else if (isWarning) {
-      sb += "WARNING: ";
+    if (this._errorHandler !== null) {
+      const debugMetadata =
+        source instanceof DebugMetadata ? source : source?.debugMetadata;
+      const metadata = debugMetadata
+        ? {
+            fileName: debugMetadata.fileName,
+            filePath: debugMetadata.filePath,
+            startLineNumber: debugMetadata.startLineNumber,
+            endLineNumber: debugMetadata.endLineNumber,
+            startCharacterNumber: debugMetadata.startCharacterNumber,
+            endCharacterNumber: debugMetadata.endCharacterNumber,
+          }
+        : null;
+      this._errorHandler(message, errorType, metadata);
     } else {
-      sb += "ERROR: ";
-    }
-
-    if (
-      source &&
-      source.debugMetadata !== null &&
-      source.debugMetadata.startLineNumber >= 1
-    ) {
-      if (source.debugMetadata.fileName != null) {
-        sb += `'${source.debugMetadata.fileName}' `;
+      let sb = "";
+      if (source instanceof AuthorWarning) {
+        sb += "TODO: ";
+        errorType = ErrorType.Information;
+      } else if (isWarning) {
+        sb += "WARNING: ";
+      } else {
+        sb += "ERROR: ";
       }
 
-      sb += `line ${source.debugMetadata.startLineNumber}: `;
-    }
+      const debugMetadata =
+        source instanceof DebugMetadata ? source : source?.debugMetadata;
 
-    sb += message;
+      if (debugMetadata != null && debugMetadata.startLineNumber >= 1) {
+        if (debugMetadata.fileName != null) {
+          sb += `'${debugMetadata.fileName}' `;
+        }
 
-    message = sb;
+        sb += `line ${debugMetadata.startLineNumber}: `;
+      }
 
-    if (this._errorHandler !== null) {
-      this._errorHandler(message, errorType);
-    } else {
+      sb += message;
+
+      message = sb;
       throw new Error(message);
     }
 
@@ -428,7 +469,7 @@ export class Story extends FlowBase {
   public readonly AddExternal = (decl: ExternalDeclaration): void => {
     if (this.externals.has(decl.name!)) {
       this.Error(
-        `Duplicate EXTERNAL definition of '${decl.name}'`,
+        `Duplicate external definition of '${decl.name}'`,
         decl,
         false
       );
@@ -445,14 +486,16 @@ export class Story extends FlowBase {
 
   public readonly NameConflictError = (
     obj: ParsedObject,
-    name: string,
-    existingObj: ParsedObject,
-    typeNameToPrint: string
+    identifier: Identifier,
+    newObj: ParsedObject | Identifier | DebugMetadata
   ): void => {
     obj.Error(
-      `${typeNameToPrint} '${name}': name has already been used for a ${existingObj.typeName.toLowerCase()} on ${
-        existingObj.debugMetadata
-      }`
+      `Duplicate identifier '${
+        identifier.name
+      }'. A ${obj.typeName.toLowerCase()} named '${
+        identifier.name
+      }' already exists on ${identifier.debugMetadata}`,
+      newObj
     );
   };
 
@@ -465,17 +508,21 @@ export class Story extends FlowBase {
     typeNameOverride: string = ""
   ): void => {
     const typeNameToPrint: string = typeNameOverride || obj.typeName;
-    if (Story.IsReservedKeyword(identifier?.name)) {
-      obj.Error(
-        `'${identifier}' cannot be used for the name of a ${typeNameToPrint.toLowerCase()} because it's a reserved keyword`
-      );
-      return;
-    } else if (FunctionCall.IsBuiltIn(identifier?.name || "")) {
-      obj.Error(
-        `'${identifier}' cannot be used for the name of a ${typeNameToPrint.toLowerCase()} because it's a built in function`
-      );
+    for (const part of identifier?.name.split(".")) {
+      if (Story.IsReservedKeyword(part)) {
+        obj.Error(
+          `'${part}' cannot be used for the name of a ${typeNameToPrint.toLowerCase()} because it's a reserved keyword`,
+          identifier?.debugMetadata
+        );
+        return;
+      } else if (FunctionCall.IsBuiltIn(part)) {
+        obj.Error(
+          `'${part}' cannot be used for the name of a ${typeNameToPrint.toLowerCase()} because it's a built in function`,
+          identifier?.debugMetadata
+        );
 
-      return;
+        return;
+      }
     }
 
     // Top level knots
@@ -490,12 +537,19 @@ export class Story extends FlowBase {
       knotOrFunction &&
       (knotOrFunction !== obj || symbolType === SymbolType.Arg)
     ) {
-      this.NameConflictError(
-        obj,
-        identifier?.name || "",
-        knotOrFunction,
-        typeNameToPrint
-      );
+      if (obj instanceof Stitch && knotOrFunction.identifier) {
+        this.NameConflictError(
+          knotOrFunction,
+          knotOrFunction.identifier,
+          obj.identifier || obj
+        );
+      } else {
+        this.NameConflictError(
+          obj,
+          identifier,
+          knotOrFunction?.identifier || knotOrFunction
+        );
+      }
       return;
     }
 
@@ -510,7 +564,7 @@ export class Story extends FlowBase {
         obj !== value &&
         value.variableAssignment !== obj
       ) {
-        this.NameConflictError(obj, identifier?.name, value, typeNameToPrint);
+        this.NameConflictError(obj, identifier, value);
       }
 
       // We don't check for conflicts between individual elements in
@@ -518,18 +572,29 @@ export class Story extends FlowBase {
       if (!(obj instanceof ListElementDefinition)) {
         for (const item of value.itemDefinitions) {
           if (identifier?.name === item.name) {
-            this.NameConflictError(
-              obj,
-              identifier?.name || "",
-              item,
-              typeNameToPrint
-            );
+            this.NameConflictError(obj, identifier, item);
           }
         }
       }
     }
 
-    // Don't check for VAR->VAR conflicts because that's handled separately
+    if (symbolType < SymbolType.List) {
+      return;
+    }
+
+    // Structs
+    for (const [key, value] of this._structDefs) {
+      if (
+        (identifier?.name === key ||
+          identifier?.name + "." + "$default" === key) &&
+        obj !== value &&
+        value.variableAssignment !== obj
+      ) {
+        this.NameConflictError(obj, identifier, value);
+      }
+    }
+
+    // Don't check for var->var conflicts because that's handled separately
     // (necessary since checking looks up in a dictionary)
     if (symbolType <= SymbolType.Var) {
       return;
@@ -543,14 +608,10 @@ export class Story extends FlowBase {
       varDecl &&
       varDecl !== obj &&
       varDecl.isGlobalDeclaration &&
-      varDecl.listDefinition == null
+      varDecl.listDefinition == null &&
+      varDecl.structDefinition == null
     ) {
-      this.NameConflictError(
-        obj,
-        identifier?.name || "",
-        varDecl,
-        typeNameToPrint
-      );
+      this.NameConflictError(obj, identifier, varDecl.variableIdentifier);
     }
 
     if (symbolType < SymbolType.SubFlowAndWeave) {
@@ -561,12 +622,7 @@ export class Story extends FlowBase {
     const path = new Path(identifier);
     const targetContent = path.ResolveFromContext(obj);
     if (targetContent && targetContent !== obj) {
-      this.NameConflictError(
-        obj,
-        identifier?.name || "",
-        targetContent,
-        typeNameToPrint
-      );
+      this.NameConflictError(obj, identifier, targetContent);
       return;
     }
 
@@ -585,7 +641,8 @@ export class Story extends FlowBase {
         for (const arg of flow.args) {
           if (arg.identifier?.name === identifier?.name) {
             obj.Error(
-              `${typeNameToPrint} '${identifier}': name has already been used for a argument to ${flow.identifier} on ${flow.debugMetadata}`
+              `Duplicate identifier '${identifier}'. A parameter named '${identifier}' already exists for ${flow.identifier} on ${flow.debugMetadata}`,
+              varDecl?.variableIdentifier.debugMetadata
             );
 
             return;

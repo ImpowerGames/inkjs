@@ -4,13 +4,24 @@ export class DebugMetadata {
   public startCharacterNumber: number = 0;
   public endCharacterNumber: number = 0;
   public fileName: string | null = null;
-  public sourceName: string | null = null;
+  public filePath: string | null = null;
+
+  constructor(dm?: DebugMetadata) {
+    if (dm) {
+      this.startLineNumber = dm.startLineNumber;
+      this.endLineNumber = dm.endLineNumber;
+      this.startCharacterNumber = dm.startCharacterNumber;
+      this.endCharacterNumber = dm.endCharacterNumber;
+      this.fileName = dm.fileName;
+      this.filePath = dm.filePath;
+    }
+  }
 
   public Merge(dm: DebugMetadata) {
     let newDebugMetadata = new DebugMetadata();
 
     newDebugMetadata.fileName = this.fileName;
-    newDebugMetadata.sourceName = this.sourceName;
+    newDebugMetadata.filePath = this.filePath;
 
     if (this.startLineNumber < dm.startLineNumber) {
       newDebugMetadata.startLineNumber = this.startLineNumber;
@@ -45,7 +56,8 @@ export class DebugMetadata {
 
   public toString() {
     if (this.fileName !== null) {
-      return `line ${this.startLineNumber} of ${this.fileName}"`;
+      const name = this.fileName.split(".")[0] || this.fileName;
+      return `line ${this.startLineNumber} of '${name}'`;
     } else {
       return "line " + this.startLineNumber;
     }

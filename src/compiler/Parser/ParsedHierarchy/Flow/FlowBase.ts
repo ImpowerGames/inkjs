@@ -20,6 +20,7 @@ import { Weave } from "../Weave";
 import { ClosestFlowBase } from "./ClosestFlowBase";
 import { Identifier } from "../Identifier";
 import { asOrNull } from "../../../../engine/TypeAssertion";
+import { DebugMetadata } from "../../../../engine/DebugMetadata";
 
 type VariableResolveResult = {
   found: boolean;
@@ -198,16 +199,12 @@ export abstract class FlowBase extends ParsedObject implements INamedContent {
     const varName = varDecl.variableName;
     if (this.variableDeclarations.has(varName)) {
       const varab = this.variableDeclarations.get(varName)!;
-      let prevDeclError = "";
-      const debugMetadata = varab.debugMetadata;
-      if (debugMetadata) {
-        prevDeclError = ` (${varab.debugMetadata})`;
-      }
 
       this.Error(
-        `found declaration variable '${varName}' that was already declared${prevDeclError}`,
-        varDecl,
-        false
+        `Duplicate identifier '${varName}'. A ${varab.typeName.toLowerCase()} named '${varName}' already exists on ${
+          varab.debugMetadata
+        }`,
+        varDecl.variableIdentifier.debugMetadata
       );
 
       return;
@@ -294,10 +291,12 @@ export abstract class FlowBase extends ParsedObject implements INamedContent {
           container.namedContent.get(namedChild.name!) || null;
 
         if (existingChild) {
-          const errorMsg = `${this.GetType()} already contains flow named '${
+          const errorMsg = `Duplicate identifier '${
             namedChild.name
-          }' (at ${(existingChild as any as RuntimeObject).debugMetadata})`;
-          this.Error(errorMsg, childFlow);
+          }'. ${this.GetType()} already contains flow named '${
+            namedChild.name
+          }' on ${(existingChild as any as RuntimeObject).debugMetadata}`;
+          this.Error(errorMsg, childFlow?.identifier || childFlow);
         }
 
         container.AddToNamedContentOnly(namedChild);
@@ -515,7 +514,14 @@ export abstract class FlowBase extends ParsedObject implements INamedContent {
       message += ` When final tunnel to '${terminatingDivert.target} ->' returns it won't have anywhere to go.`;
     }
 
-    this.Warning(message, terminatingObject);
+    const debugMetadata = new DebugMetadata(
+      terminatingObject?.debugMetadata || undefined
+    );
+    debugMetadata.startCharacterNumber = 1;
+    debugMetadata.startLineNumber = debugMetadata.endLineNumber
+    debugMetadata.endLineNumber = debugMetadata.endLineNumber + 1;
+    debugMetadata.endCharacterNumber = 1;
+    this.Warning(message, debugMetadata);
   };
 
   public readonly toString = (): string =>

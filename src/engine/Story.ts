@@ -34,6 +34,7 @@ import { DebugMetadata } from "./DebugMetadata";
 import { throwNullException } from "./NullException";
 import { SimpleJson } from "./SimpleJson";
 import { ErrorHandler, ErrorType } from "./Error";
+import { StructDefinition } from "./StructDefinition";
 
 export { InkList } from "./InkList";
 
@@ -116,6 +117,10 @@ export class Story extends InkObject {
     return this._listDefinitions;
   }
 
+  get structDefinitions() {
+    return this._structDefinitions;
+  }
+
   get state() {
     return this._state;
   }
@@ -136,6 +141,11 @@ export class Story extends InkObject {
   public onChoosePathString: ((arg1: string, arg2: any[]) => void) | null =
     null;
 
+  public onWriteRuntimeObject?: (
+    writer: SimpleJson.Writer,
+    obj: InkObject
+  ) => boolean = undefined;
+
   // TODO: Implement Profiler
   public StartProfiling() {
     /* */
@@ -144,7 +154,11 @@ export class Story extends InkObject {
     /* */
   }
 
-  constructor(contentContainer: Container, lists: ListDefinition[] | null);
+  constructor(
+    contentContainer: Container,
+    lists: ListDefinition[] | null,
+    structs: StructDefinition[] | null
+  );
   constructor(jsonString: string);
   constructor(json: Record<string, any>);
   constructor() {
@@ -153,6 +167,7 @@ export class Story extends InkObject {
     // Discrimination between constructors
     let contentContainer: Container;
     let lists: ListDefinition[] | null = null;
+    let structs: StructDefinition[] | null = null;
     let json: Record<string, any> | null = null;
 
     if (arguments[0] instanceof Container) {
@@ -160,6 +175,10 @@ export class Story extends InkObject {
 
       if (typeof arguments[1] !== "undefined") {
         lists = arguments[1] as ListDefinition[];
+      }
+
+      if (typeof arguments[2] !== "undefined") {
+        structs = arguments[2] as StructDefinition[];
       }
 
       // ------ Story (Container contentContainer, List<Runtime.ListDefinition> lists = null)
@@ -175,7 +194,23 @@ export class Story extends InkObject {
     }
 
     // ------ Story (Container contentContainer, List<Runtime.ListDefinition> lists = null)
-    if (lists != null) this._listDefinitions = new ListDefinitionsOrigin(lists);
+    if (lists != null) {
+      this._listDefinitions = new ListDefinitionsOrigin(lists);
+    }
+
+    if (structs != null) {
+      this._structDefinitions = {};
+      for (const struct of structs) {
+        const type = struct.type;
+        const name = struct.name;
+        if (type) {
+          this._structDefinitions[type] ??= {};
+          if (name) {
+            this._structDefinitions[type][name] = struct.value;
+          }
+        }
+      }
+    }
 
     this._externals = new Map();
     // ------
@@ -242,7 +277,12 @@ export class Story extends InkObject {
     writer.WriteIntProperty("inkVersion", Story.inkVersionCurrent);
 
     writer.WriteProperty("root", (w) =>
-      JsonSerialisation.WriteRuntimeContainer(w, this._mainContentContainer)
+      JsonSerialisation.WriteRuntimeContainer(
+        w,
+        this._mainContentContainer,
+        false,
+        this.onWriteRuntimeObject
+      )
     );
 
     if (this._listDefinitions != null) {
@@ -265,6 +305,10 @@ export class Story extends InkObject {
 
       writer.WriteObjectEnd();
       writer.WritePropertyEnd();
+    }
+
+    if (this._structDefinitions != null) {
+      writer.InjectObject("structDefs", this._structDefinitions);
     }
 
     writer.WriteObjectEnd();
@@ -394,7 +438,8 @@ export class Story extends InkObject {
 
       if (
         this._asyncContinueActive &&
-        durationStopwatch.ElapsedMilliseconds > millisecsLimitAsync
+        (durationStopwatch.ElapsedMilliseconds > millisecsLimitAsync ||
+          millisecsLimitAsync === Infinity)
       ) {
         break;
       }
@@ -461,12 +506,12 @@ export class Story extends InkObject {
       if (this.onError !== null) {
         if (this.state.hasError) {
           for (let err of this.state.currentErrors!) {
-            this.onError(err, ErrorType.Error);
+            this.onError(err, ErrorType.Error, null);
           }
         }
         if (this.state.hasWarning) {
           for (let err of this.state.currentWarnings!) {
-            this.onError(err, ErrorType.Warning);
+            this.onError(err, ErrorType.Warning, null);
           }
         }
         this.ResetErrors();
@@ -1051,11 +1096,11 @@ export class Story extends InkObject {
         if (
           currentDivert &&
           currentDivert.debugMetadata &&
-          currentDivert.debugMetadata.sourceName != null
+          currentDivert.debugMetadata.filePath != null
         ) {
           this.Error(
             "Divert target doesn't exist: " +
-              currentDivert.debugMetadata.sourceName
+              currentDivert.debugMetadata.filePath
           );
         } else {
           this.Error("Divert resolution failed: " + currentDivert);
@@ -1143,7 +1188,7 @@ export class Story extends InkObject {
             let names: Map<PushPopType, string> = new Map();
             names.set(
               PushPopType.Function,
-              "function return statement (~ return)"
+              "function return statement (return)"
             );
             names.set(PushPopType.Tunnel, "tunnel onwards statement (->->)");
 
@@ -1528,7 +1573,7 @@ export class Story extends InkObject {
             }
           } else {
             throw new StoryException(
-              "Failed to find LIST called " + listNameVal.value
+              "Failed to find list called " + listNameVal.value
             );
           }
 
@@ -1591,7 +1636,7 @@ export class Story extends InkObject {
             for (let i = 0; i <= listItemIndex - 1; i++) {
               listEnumerator.next();
             }
-            let value = listEnumerator.next().value;
+            let value = listEnumerator.next().value!;
             let randomItem: KeyValuePair<InkListItem, number> = {
               Key: InkListItem.fromSerializedKey(value[0]),
               Value: value[1],
@@ -1875,7 +1920,7 @@ export class Story extends InkObject {
         fallbackFunctionContainer = this.KnotContainerWithName(funcName);
         this.Assert(
           fallbackFunctionContainer !== null,
-          "Trying to call EXTERNAL function '" +
+          "Trying to call external function '" +
             funcName +
             "' which has not been bound, and fallback ink function could not be found."
         );
@@ -1891,7 +1936,7 @@ export class Story extends InkObject {
       } else {
         this.Assert(
           false,
-          "Trying to call EXTERNAL function '" +
+          "Trying to call external function '" +
             funcName +
             "' which has not been bound (and ink fallbacks disabled)."
         );
@@ -2317,6 +2362,8 @@ export class Story extends InkObject {
 
     if (!successfulIncrement) pointer = Pointer.Null;
 
+    this.state.callStack.currentElement.previousPointer =
+      this.state.callStack.currentElement.currentPointer.copy();
     this.state.callStack.currentElement.currentPointer = pointer.copy();
 
     return successfulIncrement;
@@ -2517,6 +2564,7 @@ export class Story extends InkObject {
    */
   private _mainContentContainer!: Container;
   private _listDefinitions: ListDefinitionsOrigin | null = null;
+  private _structDefinitions: Record<string, any> | null = null;
 
   private _externals: Map<string, Story.ExternalFunctionDef>;
   private _variableObservers: Map<string, Story.VariableObserver[]> | null =

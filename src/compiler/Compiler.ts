@@ -7,6 +7,7 @@ import { Story as ParsedStory } from "./Parser/ParsedHierarchy/Story";
 import { DebugMetadata } from "../engine/DebugMetadata";
 import { StringValue } from "../engine/Value";
 import { asOrNull } from "../engine/TypeAssertion";
+import { SourceMetadata } from "../engine/Error";
 
 export { CompilerOptions } from "./CompilerOptions";
 export { InkParser } from "./Parser/InkParser";
@@ -15,19 +16,19 @@ export { JsonFileHandler } from "./FileHandler/JsonFileHandler";
 export { InkList, Story } from "../engine/Story";
 
 export class Compiler {
-  private _errors: string[] = [];
-  get errors(): string[] {
+  private _errors: { message: string; source: SourceMetadata | null }[] = [];
+  get errors(): { message: string; source: SourceMetadata | null }[] {
     return this._errors;
   }
 
-  private _warnings: string[] = [];
-  get warnings(): string[] {
+  private _warnings: { message: string; source: SourceMetadata | null }[] = [];
+  get warnings(): { message: string; source: SourceMetadata | null }[] {
     return this._warnings;
   }
 
-  private _authorMessages: string[] = [];
-  get authorMessages(): string[] {
-    return this._authorMessages;
+  private _infos: { message: string; source: SourceMetadata | null }[] = [];
+  get infos(): { message: string; source: SourceMetadata | null }[] {
+    return this._infos;
   }
 
   private _inputString: string;
@@ -50,11 +51,7 @@ export class Compiler {
   }
 
   private _runtimeStory: Story | null = null;
-  get runtimeStory(): Story {
-    if (!this._runtimeStory) {
-      throw new Error("Compilation failed.");
-    }
-
+  get runtimeStory(): Story | null {
     return this._runtimeStory;
   }
 
@@ -77,7 +74,7 @@ export class Compiler {
     this._options = options || new CompilerOptions();
   }
 
-  public readonly Compile = (): Story => {
+  public readonly Compile = (): Story | null => {
     this._parser = new InkParser(
       this.inputString,
       this.options.sourceFilename || null,
@@ -87,28 +84,30 @@ export class Compiler {
     );
 
     this._parsedStory = this.parser.ParseStory();
+    this.parsedStory.countAllVisits = this.options.countAllVisits;
+    this._runtimeStory = this.parsedStory.ExportRuntime(this.OnError);
 
-    if (this.errors.length === 0) {
-      this.parsedStory.countAllVisits = this.options.countAllVisits;
-      this._runtimeStory = this.parsedStory.ExportRuntime(this.OnError);
-    } else {
-      this._runtimeStory = null;
+    if (this._runtimeStory) {
+      this._runtimeStory.onWriteRuntimeObject =
+        this.options.serializationHandler?.WriteRuntimeObject;
     }
 
-    return this.runtimeStory;
+    return this._runtimeStory;
   };
 
   public readonly RetrieveDebugSourceForLatestContent = (): void => {
-    for (const outputObj of this.runtimeStory.state.outputStream) {
-      const textContent = asOrNull(outputObj, StringValue);
-      if (textContent !== null) {
-        const range = new DebugSourceRange(
-          textContent.value?.length || 0,
-          textContent.debugMetadata,
-          textContent.value || "unknown"
-        );
+    if (this._runtimeStory) {
+      for (const outputObj of this._runtimeStory.state.outputStream) {
+        const textContent = asOrNull(outputObj, StringValue);
+        if (textContent !== null) {
+          const range = new DebugSourceRange(
+            textContent.value?.length || 0,
+            textContent.debugMetadata,
+            textContent.value || "unknown"
+          );
 
-        this.debugSourceRanges.push(range);
+          this.debugSourceRanges.push(range);
+        }
       }
     }
   };
@@ -134,23 +133,27 @@ export class Compiler {
     return null;
   };
 
-  public readonly OnError = (message: string, errorType: ErrorType) => {
-    switch (errorType) {
-      case ErrorType.Author:
-        this._authorMessages.push(message);
+  public readonly OnError = (
+    message: string,
+    severity: ErrorType,
+    source: SourceMetadata | null
+  ) => {
+    switch (severity) {
+      case ErrorType.Information:
+        this._infos.push({ message, source });
         break;
 
       case ErrorType.Warning:
-        this._warnings.push(message);
+        this._warnings.push({ message, source });
         break;
 
       case ErrorType.Error:
-        this._errors.push(message);
+        this._errors.push({ message, source });
         break;
     }
 
     if (this.options.errorHandler !== null) {
-      this.options.errorHandler(message, errorType);
+      this.options.errorHandler(message, severity, source);
     }
   };
 }

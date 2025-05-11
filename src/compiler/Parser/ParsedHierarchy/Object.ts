@@ -5,6 +5,7 @@ import { InkObject as RuntimeObject } from "../../../engine/Object";
 import { Path as RuntimePath } from "../../../engine/Path";
 import { Story } from "./Story";
 import { asOrNull } from "../../../engine/TypeAssertion";
+import { Identifier } from "./Identifier";
 
 export abstract class ParsedObject {
   public abstract readonly GenerateRuntimeObject: () => RuntimeObject | null;
@@ -217,7 +218,7 @@ export abstract class ParsedObject {
 
   public Error(
     message: string,
-    source: ParsedObject | null = null,
+    source: ParsedObject | Identifier | DebugMetadata | null = null,
     isWarning: boolean = false
   ): void {
     if (source === null) {
@@ -225,11 +226,21 @@ export abstract class ParsedObject {
     }
 
     // Only allow a single parsed object to have a single error *directly* associated with it
-    if (
-      (source._alreadyHadError && !isWarning) ||
-      (source._alreadyHadWarning && isWarning)
-    ) {
-      return;
+    if (source instanceof ParsedObject) {
+      if (
+        (source._alreadyHadError && !isWarning) ||
+        (source._alreadyHadWarning && isWarning)
+      ) {
+        return;
+      }
+    }
+    if (source instanceof Identifier) {
+      if (
+        (source.alreadyHadError && !isWarning) ||
+        (source.alreadyHadWarning && isWarning)
+      ) {
+        return;
+      }
     }
 
     if (this.parent) {
@@ -238,16 +249,25 @@ export abstract class ParsedObject {
       throw new Error(`No parent object to send error to: ${message}`);
     }
 
-    if (isWarning) {
-      source._alreadyHadWarning = true;
-    } else {
-      source._alreadyHadError = true;
+    if (source instanceof ParsedObject) {
+      if (isWarning) {
+        source._alreadyHadWarning = true;
+      } else {
+        source._alreadyHadError = true;
+      }
+    }
+    if (source instanceof Identifier) {
+      if (isWarning) {
+        source.alreadyHadWarning = true;
+      } else {
+        source.alreadyHadError = true;
+      }
     }
   }
 
   public readonly Warning = (
     message: string,
-    source: ParsedObject | null = null
+    source: ParsedObject | Identifier | DebugMetadata | null = null
   ): void => {
     this.Error(message, source, true);
   };

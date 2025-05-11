@@ -30,6 +30,11 @@ export namespace SimpleJson {
   // of a javascript object, which is serialised in the `toString` method.
   // See individual methods and properties for more information.
   export class Writer {
+    public InjectObject(name: string, obj: any) {
+      this._jsonObject ??= {};
+      (this._jsonObject as any)[name] = obj;
+    }
+
     public WriteObject(inner: (w: Writer) => void) {
       this.WriteObjectStart();
       inner(this);
@@ -204,10 +209,10 @@ export namespace SimpleJson {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       escape: boolean = true
     ) {
-      if (value === null) {
-        console.error("Warning: trying to write a null value");
-        return;
-      }
+      // if (value === null) {
+      //   console.error("Warning: trying to write a null value");
+      //   return;
+      // }
 
       this.StartNewObject(false);
       this._addToCurrentObject(value);
@@ -303,6 +308,11 @@ export namespace SimpleJson {
       }
 
       return JSON.stringify(this._jsonObject);
+    }
+
+    // Get the root object.
+    public toObject() {
+      return this._jsonObject;
     }
 
     // Prepare the state stack when adding new objects / values.
