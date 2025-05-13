@@ -1,10 +1,10 @@
 //inkjs test script
-#global tag
+# global tag
 
 -> glue.diverted_glue
 
 Ouside content
-#not a global tag
+# not a global tag
 
 EXTERNAL fn_ext(a, b, c)
 EXTERNAL gameInc(x)
@@ -109,16 +109,16 @@ Diverted with a variable
 
 
 === tags
-#knot tag
+# knot tag
 -> DONE
 
 = line_by_Line
-A line of content #a tag
-Another line of content #tag1 #tag2
+A line of content # a tag
+Another line of content # tag1 # tag2
 
-#tag above
+# tag above
 Content after a tag # tag after
-#tag below
+# tag below
 -> DONE
 
 = choice
@@ -128,10 +128,10 @@ Content after a tag # tag after
 = weird
 // tags should be trimmed
 # space around
-#//void
-# //a space
+# //void
+#  //a space
 #    //multiple spaces
-#0
+# 0
 -> DONE
 
 
@@ -258,12 +258,12 @@ variables defined: {stringconst} {intconst} {floatconst}
 ~ temp one = 1
 ~ temp zero = 0
 {
--!zero:int truthy not
-- else:broken
+- !zero:int truthy not
+-  else:broken
 }
 {
--!one:broken
--int falsy not
+- !one:broken
+- int falsy not
 }
 
 {1 && 1:int truthy and|broken}
@@ -301,8 +301,8 @@ variables defined: {stringconst} {intconst} {floatconst}
 
 ~ temp onepointtwo = 1.2
 {
--!onepointtwo:broken
--float falsy not
+- !onepointtwo:broken
+- float falsy not
 }
 
 {1.3 && 1.3:float truthy and|broken}
@@ -396,12 +396,12 @@ function called
 === function fn_params(a, b) ===
 ~ a = "was a"
 ~ b = "was b"
-~return a
+~ return a
 
 === function fn_params_ref(ref a, ref b) ===
 ~ a = "was a"
 ~ b = "was b"
-~return a
+~ return a
 
 === function fn_calls_other ===
 ~ return fn_called()

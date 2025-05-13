@@ -1,4 +1,4 @@
-LIST list = (a), b
-{list ? ()}
+LIST list1 = (a), b
+{list1 ? ()}
 {() ? ()}
-{() ? list}
+{() ? list1}

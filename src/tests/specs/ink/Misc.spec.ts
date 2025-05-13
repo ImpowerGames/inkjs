@@ -176,28 +176,30 @@ C C C
     expect(eliminator.Process()).toBe("A B\nC D \nA B\nC D \n\n\n ");
   });
 
-  // TestLooseEnds
-  it("tests loose ends", () => {
-    compileStoryWithoutRuntime("loose_ends");
+  // IMPORTANT COMPILER CHANGE! WE HANDLE LOOSE ENDS DIFFERENTLY
+  // // TestLooseEnds
+  // it("tests loose ends", () => {
+  //   compileStoryWithoutRuntime("loose_ends");
 
-    expect(context.warningMessages.length).toBe(3);
-    expect(context.warningMessages).toContainStringContaining(
-      "line 4: Apparent loose end"
-    );
-    expect(context.warningMessages).toContainStringContaining(
-      "line 6: Apparent loose end"
-    );
-    expect(context.warningMessages).toContainStringContaining(
-      "line 14: Apparent loose end"
-    );
-    expect(context.authorMessages.length).toBe(1);
-  });
+  //   expect(context.warningMessages.length).toBe(3);
+  //   expect(context.warningMessages).toContainStringContaining(
+  //     "line 4: Apparent loose end"
+  //   );
+  //   expect(context.warningMessages).toContainStringContaining(
+  //     "line 6: Apparent loose end"
+  //   );
+  //   expect(context.warningMessages).toContainStringContaining(
+  //     "line 14: Apparent loose end"
+  //   );
+  //   expect(context.authorMessages.length).toBe(1);
+  // });
 
-  // TestReturnTextWarning
-  it("tests return text warning", () => {
-    compileStoryWithoutRuntime("return_text_warning");
-    expect(context.warningMessages.length).toBeGreaterThanOrEqual(1);
-  });
+  // IMPORTANT COMPILER CHANGE! WE ALLOW return AND temp WITHOUT ~ PREFIX
+  // // TestReturnTextWarning
+  // it("tests return text warning", () => {
+  //   compileStoryWithoutRuntime("return_text_warning");
+  //   expect(context.warningMessages.length).toBeGreaterThanOrEqual(1);
+  // });
 
   // TestAuthorWarningsInsideContentListBug
   it("tests author warnings inside content list bug", () => {

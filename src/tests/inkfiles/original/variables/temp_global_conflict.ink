@@ -5,8 +5,8 @@
 {x}
 -> DONE
 === function f(ref x)
-~temp local = 0
-~x=x
+~ temp local = 0
+~ x=x
 {setTo3(local)}
 === function setTo3(ref x)
-~x = 3
+~ x = 3

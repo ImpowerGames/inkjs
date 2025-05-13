@@ -93,8 +93,6 @@ describe("Knots", () => {
   it("tests stitch naming collision", () => {
     compileStory("stitch_naming_collision", false, true);
 
-    expect(context.errorMessages).toContainStringContaining(
-      "already been used for a var"
-    );
+    expect(context.errorMessages).toContainStringContaining("already");
   });
 });

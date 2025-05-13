@@ -29,15 +29,15 @@ describe("Stat Generation", () => {
     expect(stats.stitches).toBe(1);
   });
   it("count diverts", () => {
-    const stats = getStats("->go\n- (go)\n->next\n-(next)");
+    const stats = getStats("->go\n- (go)\n->next\n- (next)");
     expect(stats.diverts).toBe(2);
   });
   it("end counts as a divert", () => {
-    const stats = getStats("->go\n- (go)\n->next\n-(next)\n->END");
+    const stats = getStats("->go\n- (go)\n->next\n- (next)\n->END");
     expect(stats.diverts).toBe(3);
   });
   it("count gathers", () => {
-    const stats = getStats("->go\n- (go)\n->next\n-(next)");
+    const stats = getStats("->go\n- (go)\n->next\n- (next)");
     expect(stats.gathers).toBe(2);
   });
 });

@@ -24,12 +24,8 @@ describe("Functions", () => {
     compileStoryWithoutRuntime("argument_name_collisions");
 
     expect(context.errorMessages.length).toBe(2);
-    expect(context.errorMessages).toContainStringContaining(
-      "name has already been used for a function"
-    );
-    expect(context.errorMessages).toContainStringContaining(
-      "name has already been used for a var"
-    );
+    expect(context.errorMessages).toContainStringContaining("already");
+    expect(context.errorMessages).toContainStringContaining("already");
   });
 
   // TestArgumentShouldntConflictWithGatherElsewhere

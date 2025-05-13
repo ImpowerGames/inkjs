@@ -4,6 +4,6 @@ Should you cross the river?
 
 *   [Yes]
 *   [No]
-**  [Fight back]
-**  [Flee]
+* *  [Fight back]
+* *  [Flee]
 - -> END

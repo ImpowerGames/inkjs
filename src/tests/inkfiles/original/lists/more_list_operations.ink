@@ -1,7 +1,7 @@
-LIST list = l, m = 5, n
+LIST list1 = l, m = 5, n
 {LIST_VALUE(l)}
-{list(1)}
-~ temp t = list()
+{list1(1)}
+~ temp t = list1()
 ~ t += n
 {t}
 ~ t = LIST_ALL(t)

@@ -1,5 +1,5 @@
 A
-~temp someTemp = string()
+~ temp someTemp = string()
 B
 A
 {string()}

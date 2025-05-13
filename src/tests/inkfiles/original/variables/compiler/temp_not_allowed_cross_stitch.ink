@@ -1,7 +1,7 @@
 -> knot.stitch
 
 == knot (y) ==
-~temp x = 5
+~ temp x = 5
 -> END
 
 = stitch

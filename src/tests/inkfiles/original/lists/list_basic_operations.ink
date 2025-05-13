@@ -1,7 +1,7 @@
-LIST list = a, (b), c, (d), e
-{list}
+LIST list1 = a, (b), c, (d), e
+{list1}
 {(a, c) + (b, e)}
 {(a, b, c) ^ (c, b, e)}
-{list ? (b, d, e)}
-{list ? (d, b)}
-{list !? (c)}
+{list1 ? (b, d, e)}
+{list1 ? (d, b)}
+{list1 !? (c)}

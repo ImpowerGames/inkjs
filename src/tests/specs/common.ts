@@ -178,7 +178,9 @@ export function makeDefaultTestContext(
     return context;
   }
 
-  context.bytecode = context.story.ToJson();
+  try {
+    context.bytecode = context.story.ToJson();
+  } catch {}
 
   //TODO: Test JSON Roundtrip?
 

@@ -1,2 +1,2 @@
 === function knot (a)
-    ~temp a = 1"
+    ~ temp a = 1"
