@@ -283,15 +283,11 @@ export class InkParser extends StringParser {
   public readonly AuthorWarning = (): AuthorWarning | null => {
     this.Whitespace();
 
-    const identifier = this.Parse(
-      this.IdentifierWithMetadata
-    ) as unknown as Identifier | null;
-    if (identifier === null || identifier.name !== "TODO") {
+    const keyword = this.ParseKeywordString("TODO:");
+    if (keyword == null) {
       return null;
     }
 
-    this.Whitespace();
-    this.ParseString(":");
     this.Whitespace();
 
     const message = this.ParseUntilCharactersFromString("\n\r");
@@ -1595,7 +1591,7 @@ export class InkParser extends StringParser {
   public readonly Assignment = (): ParsedObject | null => {
     this.Whitespace();
 
-    let varIdentifier = this.Parse(this.IdentifierWithMetadata) as Identifier;
+    let varIdentifier = this.Parse(this.AccessIdentifier) as Identifier;
 
     if (varIdentifier === null) {
       return null;
@@ -2617,8 +2613,9 @@ export class InkParser extends StringParser {
         expr instanceof List;
 
       if (!check) {
-        this.Error(
-          "Initial value for a variable must be a number, string, boolean, constant, list item, or divert target"
+        this.ErrorWithParsedObject(
+          "Initial value for a variable must be a number, string, boolean, constant, list item, or divert target",
+          expr
         );
       }
 
@@ -3236,6 +3233,21 @@ export class InkParser extends StringParser {
     }
 
     return expr;
+  };
+
+  public readonly AccessIdentifier = (): Identifier | null => {
+    const path = this.Interleave<Identifier>(
+      this.Spaced(this.IdentifierWithMetadata),
+      this.Exclude(this.String("."))
+    );
+    const identifier = new Identifier(path.map((p) => p.name).join("."));
+    const first = path[0];
+    const last = path.at(-1);
+    identifier.debugMetadata =
+      (last?.debugMetadata
+        ? first?.debugMetadata?.Merge(last?.debugMetadata)
+        : first?.debugMetadata) || null;
+    return identifier;
   };
 
   public readonly IdentifierWithMetadata = (): Identifier | null => {
